@@ -236,6 +236,16 @@ func resolveSocketOptions(flags *FlagConfig) (socketOptions, error) {
 	v4ttl, _ := effective(flags.WebIPv4TTL, uint8(0), yamlV4)
 	v6hop, _ := effective(flags.WebIPv6HopLimit, uint8(0), yamlV6)
 	dscp, dscpSet := effective(flags.WebDSCP, -1, yamlDSCP)
+	// Flag-level range check for DSCP. The kingpin.Int() parser accepts any
+	// int so a value like --web.dscp=999 would otherwise flow into setsockopt
+	// where the kernel takes the low byte of (dscp << 2), silently producing
+	// a DSCP value different from what the operator asked for.
+	// (TTL/Hop-Limit don't need this guard: kingpin.Uint8() already rejects
+	// negative and >255 values at parse time, and the 0 sentinel means
+	// "not configured".)
+	if dscpSet && (dscp < 0 || dscp > 63) {
+		return socketOptions{}, fmt.Errorf("dscp must be in range 0-63, got %d", dscp)
+	}
 	opts := socketOptions{IPv4TTL: v4ttl, IPv6HopLimit: v6hop, DSCP: -1}
 	if dscpSet {
 		opts.DSCP = dscp
